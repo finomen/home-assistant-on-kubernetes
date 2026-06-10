@@ -44,6 +44,78 @@ homeAssistant:
       enabled: true
       path: /run/dbus
 
+  # ── Init Containers ──
+  # Run before the main Home Assistant container starts.
+  # Useful for installing custom components, seeding configuration, etc.
+  # All volumes defined for the pod (e.g. "config") are available to mount here.
+  # Full spec: https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
+  initContainers: []
+  # Example — install a custom component from a git repo:
+  # - name: install-oidc-auth
+  #   image: alpine:3.19
+  #   command:
+  #     - sh
+  #     - -c
+  #     - |
+  #       apk add --no-cache wget unzip
+  #       wget -O /tmp/hass-oidc-auth.zip https://github.com/christiaangoossens/hass-oidc-auth/archive/refs/heads/main.zip
+  #       unzip /tmp/hass-oidc-auth.zip -d /tmp/
+  #       mkdir -p /config/custom_components
+  #       cp -r /tmp/hass-oidc-auth-main/custom_components/hass_oidc_auth /config/custom_components/
+  #   volumeMounts:
+  #     - name: config
+  #       mountPath: /config
+
+  # ── OIDC Auth Integration ──
+  # Adds OpenID Connect / OAuth2 login support via hass-oidc-auth.
+  # Repo: https://github.com/christiaangoossens/hass-oidc-auth
+  #
+  # When enabled, an init container writes /config/oidc_auth.yaml (a mapping) with
+  # all resolved credentials and settings. Add to homeAssistant.configuration:
+  #
+  #   auth_oidc: !include oidc_auth.yaml
+  #
+  # The custom component must be installed separately (e.g. via an init container).
+  oidc:
+    enabled: false
+    # OIDC provider discovery URL
+    # e.g. https://auth.example.com/realms/myrealm/.well-known/openid-configuration
+    discoveryUrl: ""
+
+    clientId:
+      # Provide exactly one of: value, secretKeyRef, or configMapKeyRef.
+      value: ""
+      secretKeyRef: {}    # { name: my-secret, key: client-id }
+      configMapKeyRef: {} # { name: my-configmap, key: client-id }
+    clientSecret:
+      # Provide exactly one of: value or secretKeyRef.
+      value: ""
+      secretKeyRef: {}    # { name: my-secret, key: client-secret }
+
+    # Optional: override JWT signing algorithm (default: RS256)
+    idTokenSigningAlg: ""
+
+    # Optional: name of the scope that carries group membership (e.g. "groups")
+    groupsScope: ""
+
+    # Optional: extra scopes to request beyond openid/profile/email
+    additionalScopes: []
+    # additionalScopes:
+    #   - roles
+    #   - offline_access
+
+    # Optional: map your provider's claim names to what hass-oidc-auth expects
+    claims:
+      displayName: ""   # claim for the user's display name  (e.g. "name")
+      username: ""      # claim for the username             (e.g. "preferred_username")
+      groups: ""        # claim that carries group membership (e.g. "groups")
+
+    # Optional: map provider group names to HA roles.
+    # If "user" is set, OIDC users NOT in either group are rejected.
+    roles:
+      admin: ""   # group whose members become HA administrators
+      user: ""    # group whose members become regular HA users
+
   # ── Sidecar: Bluetooth/Bluez ──
   # Provides BLE (Bluetooth Low Energy) support for sensors like
   # plant soil monitors, temperature beacons, etc.

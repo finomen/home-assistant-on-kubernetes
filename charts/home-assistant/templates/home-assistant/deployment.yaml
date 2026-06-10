@@ -17,6 +17,83 @@ spec:
       labels:
         app: home-assistant
     spec:
+      {{- if or .Values.homeAssistant.initContainers .Values.homeAssistant.oidc.enabled }}
+      initContainers:
+      {{- range .Values.homeAssistant.initContainers }}
+        - {{- toYaml . | nindent 10 }}
+      {{- end }}
+      {{- if .Values.homeAssistant.oidc.enabled }}
+        - name: oidc-config
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              printf 'client_id: "%s"\n' "$OIDC_CLIENT_ID" > /config/oidc_auth.yaml
+              printf 'client_secret: "%s"\n' "$OIDC_CLIENT_SECRET" >> /config/oidc_auth.yaml
+              printf 'discovery_url: "{{ .Values.homeAssistant.oidc.discoveryUrl }}"\n' >> /config/oidc_auth.yaml
+              {{- if .Values.homeAssistant.oidc.idTokenSigningAlg }}
+              printf 'id_token_signing_alg: {{ .Values.homeAssistant.oidc.idTokenSigningAlg }}\n' >> /config/oidc_auth.yaml
+              {{- end }}
+              {{- if .Values.homeAssistant.oidc.groupsScope }}
+              printf 'groups_scope: {{ .Values.homeAssistant.oidc.groupsScope }}\n' >> /config/oidc_auth.yaml
+              {{- end }}
+              {{- if .Values.homeAssistant.oidc.additionalScopes }}
+              printf 'additional_scopes:\n' >> /config/oidc_auth.yaml
+              {{- range .Values.homeAssistant.oidc.additionalScopes }}
+              printf '  - {{ . }}\n' >> /config/oidc_auth.yaml
+              {{- end }}
+              {{- end }}
+              {{- if or .Values.homeAssistant.oidc.claims.displayName .Values.homeAssistant.oidc.claims.username .Values.homeAssistant.oidc.claims.groups }}
+              printf 'claims:\n' >> /config/oidc_auth.yaml
+              {{- if .Values.homeAssistant.oidc.claims.displayName }}
+              printf '  display_name: {{ .Values.homeAssistant.oidc.claims.displayName }}\n' >> /config/oidc_auth.yaml
+              {{- end }}
+              {{- if .Values.homeAssistant.oidc.claims.username }}
+              printf '  username: {{ .Values.homeAssistant.oidc.claims.username }}\n' >> /config/oidc_auth.yaml
+              {{- end }}
+              {{- if .Values.homeAssistant.oidc.claims.groups }}
+              printf '  groups: {{ .Values.homeAssistant.oidc.claims.groups }}\n' >> /config/oidc_auth.yaml
+              {{- end }}
+              {{- end }}
+              {{- if or .Values.homeAssistant.oidc.roles.admin .Values.homeAssistant.oidc.roles.user }}
+              printf 'roles:\n' >> /config/oidc_auth.yaml
+              {{- if .Values.homeAssistant.oidc.roles.admin }}
+              printf '  admin: {{ .Values.homeAssistant.oidc.roles.admin }}\n' >> /config/oidc_auth.yaml
+              {{- end }}
+              {{- if .Values.homeAssistant.oidc.roles.user }}
+              printf '  user: {{ .Values.homeAssistant.oidc.roles.user }}\n' >> /config/oidc_auth.yaml
+              {{- end }}
+              {{- end }}
+          env:
+            - name: OIDC_CLIENT_ID
+              {{- if .Values.homeAssistant.oidc.clientId.secretKeyRef.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.homeAssistant.oidc.clientId.secretKeyRef.name | quote }}
+                  key: {{ .Values.homeAssistant.oidc.clientId.secretKeyRef.key | quote }}
+              {{- else if .Values.homeAssistant.oidc.clientId.configMapKeyRef.name }}
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.homeAssistant.oidc.clientId.configMapKeyRef.name | quote }}
+                  key: {{ .Values.homeAssistant.oidc.clientId.configMapKeyRef.key | quote }}
+              {{- else }}
+              value: {{ .Values.homeAssistant.oidc.clientId.value | quote }}
+              {{- end }}
+            - name: OIDC_CLIENT_SECRET
+              {{- if .Values.homeAssistant.oidc.clientSecret.secretKeyRef.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.homeAssistant.oidc.clientSecret.secretKeyRef.name | quote }}
+                  key: {{ .Values.homeAssistant.oidc.clientSecret.secretKeyRef.key | quote }}
+              {{- else }}
+              value: {{ .Values.homeAssistant.oidc.clientSecret.value | quote }}
+              {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      {{- end }}
+      {{- end }}
       containers:
       {{- if .Values.homeAssistant.bluez.enabled }}
       - name: bluez
@@ -46,6 +123,32 @@ spec:
           {{- toYaml .Values.homeAssistant.resources | nindent 10 }}
         ports:
         - containerPort: 8123
+        {{- if .Values.homeAssistant.oidc.enabled }}
+        env:
+          - name: OIDC_CLIENT_ID
+            {{- if .Values.homeAssistant.oidc.clientId.secretKeyRef.name }}
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.homeAssistant.oidc.clientId.secretKeyRef.name | quote }}
+                key: {{ .Values.homeAssistant.oidc.clientId.secretKeyRef.key | quote }}
+            {{- else if .Values.homeAssistant.oidc.clientId.configMapKeyRef.name }}
+            valueFrom:
+              configMapKeyRef:
+                name: {{ .Values.homeAssistant.oidc.clientId.configMapKeyRef.name | quote }}
+                key: {{ .Values.homeAssistant.oidc.clientId.configMapKeyRef.key | quote }}
+            {{- else }}
+            value: {{ .Values.homeAssistant.oidc.clientId.value | quote }}
+            {{- end }}
+          - name: OIDC_CLIENT_SECRET
+            {{- if .Values.homeAssistant.oidc.clientSecret.secretKeyRef.name }}
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.homeAssistant.oidc.clientSecret.secretKeyRef.name | quote }}
+                key: {{ .Values.homeAssistant.oidc.clientSecret.secretKeyRef.key | quote }}
+            {{- else }}
+            value: {{ .Values.homeAssistant.oidc.clientSecret.value | quote }}
+            {{- end }}
+        {{- end }}
         volumeMounts:
         - mountPath: /config
           name: config
