@@ -13,4 +13,7 @@
 {{- if and .Values.gateway.enabled (empty .Values.gateway.hostname) }}
   {{- fail "gateway.hostname is required when gateway is enabled" }}
 {{- end }}
+{{- if and .Values.gateway.enabled (empty .Values.gateway.trustedProxies) }}
+  {{- fail "gateway.trustedProxies is required when gateway is enabled — set it to your pod CIDR so HA trusts X-Forwarded-For headers from gateway pods (e.g. [\"10.244.0.0/16\"]). Find it with: kubectl get nodes -o jsonpath='{.items[*].spec.podCIDR}'" }}
+{{- end }}
 {{- end }}

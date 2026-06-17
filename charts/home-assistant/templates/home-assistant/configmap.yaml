@@ -10,5 +10,11 @@ metadata:
 data:
   known_devices.yaml: |
   automations.yaml: |
+  {{- if .Values.homeAssistant.config.script }}
+  scripts.yaml: |
+  {{- end }}
+  {{- if .Values.homeAssistant.config.scene }}
+  scenes.yaml: |
+  {{- end }}
   configuration.yaml: |-
     {{- include "home-assistant.configuration" . | nindent 4 }}

@@ -195,6 +195,16 @@ spec:
           - mountPath: /config/automations.yaml
             subPath: automations.yaml
             name: configmap-file
+          {{- if .Values.homeAssistant.config.script }}
+          - mountPath: /config/scripts.yaml
+            subPath: scripts.yaml
+            name: configmap-file
+          {{- end }}
+          {{- if .Values.homeAssistant.config.scene }}
+          - mountPath: /config/scenes.yaml
+            subPath: scenes.yaml
+            name: configmap-file
+          {{- end }}
           - mountPath: /media
             name: media-volume
           {{- if .Values.homeAssistant.devices.dbus.enabled }}

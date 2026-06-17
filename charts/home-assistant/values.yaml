@@ -175,6 +175,10 @@ gateway:
   gatewayNamespace: ""
   gatewayName: ""
   hostname: ""
+  # CIDR ranges that HA will trust X-Forwarded-For headers from.
+  # Must cover the IP range of your gateway controller pods.
+  # Find the right CIDR: kubectl get nodes -o jsonpath='{.items[*].spec.podCIDR}'
+  # Required when gateway.enabled is true.
   trustedProxies: []
 
 # ──────────────────────────────────────────────
