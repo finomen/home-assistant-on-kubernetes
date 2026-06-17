@@ -101,6 +101,11 @@ homeAssistant:
       admin: ""   # group whose members become HA administrators
       user: ""    # group whose members become regular HA users
 
+    # Keep the built-in homeassistant auth provider alongside OIDC.
+    # Useful during initial setup or as a break-glass fallback.
+    # When false (default), auth_providers: [] disables local username/password login.
+    keepLocalAuth: false
+
   # ── Sidecar: Bluetooth/Bluez ──
   # Provides BLE (Bluetooth Low Energy) support for sensors like
   # plant soil monitors, temperature beacons, etc.
@@ -141,6 +146,11 @@ homeAssistant:
   # Docs: https://www.home-assistant.io/docs/configuration/
   config:
     defaultConfig: true
+    # Enable bluetooth integration. Disable in environments without BT hardware
+    # (e.g. Kubernetes) to avoid 10+ second startup delays and timeout warnings.
+    # When false, an explicit `bluetooth:` entry is emitted in configuration.yaml
+    # which tells HA to skip auto-discovery of bluetooth adapters.
+    bluetooth: false
     homeassistant:
       name: ""
       latitude: 0

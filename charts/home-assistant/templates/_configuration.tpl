@@ -16,6 +16,9 @@ homeassistant:
 {{- if $ha.config.defaultConfig }}
 default_config:
 {{- end }}
+{{- if not $ha.config.bluetooth }}
+bluetooth:
+{{- end }}
 http:
 {{- if $gw.enabled }}
   use_x_forwarded_for: true
@@ -65,7 +68,9 @@ script: !include scripts.yaml
 scene: !include scenes.yaml
 {{- end }}
 {{- if $ha.oidc.enabled }}
+{{- if not $ha.oidc.keepLocalAuth }}
 auth_providers: []
+{{- end }}
 auth_oidc: !include oidc_auth.yaml
 {{- end }}
 {{- if $ha.config.extra }}
