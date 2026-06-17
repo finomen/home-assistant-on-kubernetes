@@ -11,4 +11,4 @@ data:
   known_devices.yaml: |
   automations.yaml: |
   configuration.yaml: |-
-{{ .Values.homeAssistant.configuration | indent 4 }}
+    {{- include "home-assistant.configuration" . | nindent 4 }}

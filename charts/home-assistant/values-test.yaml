@@ -3,8 +3,8 @@ namespace: ha-test
 homeAssistant:
   pvc:
     size: 9Gi
-  hostNetwork: true
-  privileged: true
+  hostNetwork: false
+  privileged: false
   bluez:
     enabled: false
   matter:
@@ -14,14 +14,12 @@ homeAssistant:
       enabled: false
     dbus:
       enabled: false
-  configuration: |
-    default_config:
-    frontend:
-      themes: !include_dir_merge_named themes
-    automation: !include automations.yaml
+  plugins: []
+  config:
+    defaultConfig: true
     http:
-      use_x_forwarded_for: true
-      trusted_proxies:
+      useXForwardedFor: true
+      trustedProxies:
         - 10.0.0.0/16
         - 127.0.0.1
 
@@ -34,8 +32,5 @@ zwavejs:
 mosquitto:
   enabled: true
 
-ingress:
-  enabled: false
-
-certIssuer:
+gateway:
   enabled: false

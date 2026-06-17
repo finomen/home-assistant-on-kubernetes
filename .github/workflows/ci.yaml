@@ -1,0 +1,50 @@
+name: Helm Chart CI
+on:
+  push:
+    paths: ["charts/**"]
+  pull_request:
+    paths: ["charts/**"]
+
+jobs:
+  lint-template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Lint
+        run: helm lint charts/home-assistant
+      - name: Template — defaults
+        run: helm template test charts/home-assistant -f charts/home-assistant/values-test.yaml
+      - name: Template — gateway enabled
+        run: |
+          helm template test charts/home-assistant \
+            -f charts/home-assistant/values-test.yaml \
+            --set gateway.enabled=true \
+            --set gateway.hostname=ha.example.com \
+            --set gateway.gatewayName=eg \
+            --set gateway.gatewayNamespace=gateway-system
+      - name: Template — matter hostNetwork
+        run: |
+          helm template test charts/home-assistant \
+            -f charts/home-assistant/values-test.yaml \
+            --set homeAssistant.matter.enabled=true \
+            --set homeAssistant.matter.networkMode=hostNetwork
+      - name: Template — matter multus
+        run: |
+          helm template test charts/home-assistant \
+            -f charts/home-assistant/values-test.yaml \
+            --set homeAssistant.matter.enabled=true \
+            --set homeAssistant.matter.networkMode=multus \
+            --set homeAssistant.matter.multus.masterInterface=eth0 \
+            --set homeAssistant.matter.multus.networkName=matter-network \
+            --set homeAssistant.matter.multus.cniType=macvlan
+      - name: Validation — matter missing networkMode should fail
+        run: |
+          ! helm template test charts/home-assistant \
+            -f charts/home-assistant/values-test.yaml \
+            --set homeAssistant.matter.enabled=true 2>&1
+      - name: Validation — gateway missing hostname should fail
+        run: |
+          ! helm template test charts/home-assistant \
+            -f charts/home-assistant/values-test.yaml \
+            --set gateway.enabled=true 2>&1

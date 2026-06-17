@@ -1,3 +1,4 @@
+{{- include "home-assistant.validateValues" . -}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -16,13 +17,68 @@ spec:
     metadata:
       labels:
         app: home-assistant
-    spec:
-      {{- if or .Values.homeAssistant.initContainers .Values.homeAssistant.oidc.enabled }}
-      initContainers:
-      {{- range .Values.homeAssistant.initContainers }}
-        - {{- toYaml . | nindent 10 }}
+      {{- if and .Values.homeAssistant.matter.enabled (eq .Values.homeAssistant.matter.networkMode "multus") }}
+      annotations:
+        k8s.v1.cni.cncf.io/networks: {{ .Values.homeAssistant.matter.multus.networkName }}
       {{- end }}
-      {{- if .Values.homeAssistant.oidc.enabled }}
+    spec:
+      {{- if or .Values.homeAssistant.plugins .Values.homeAssistant.oidc.enabled }}
+      initContainers:
+        - name: install-plugins
+          image: alpine:3.20
+          command:
+            - /bin/sh
+            - -c
+            - |
+              {{- if .Values.homeAssistant.oidc.enabled }}
+              {{- if .Values.homeAssistant.oidc.plugin.sha256 }}
+              if [ "$(cat /config/custom_components/hass_oidc_auth/.sha256 2>/dev/null)" = {{ .Values.homeAssistant.oidc.plugin.sha256 | quote }} ]; then
+                echo "Plugin hass_oidc_auth already at {{ .Values.homeAssistant.oidc.plugin.sha256 }}, skipping"
+              else
+                apk add --no-cache wget unzip
+                wget -O /tmp/hass_oidc_auth.zip {{ .Values.homeAssistant.oidc.plugin.url }}
+                echo "{{ .Values.homeAssistant.oidc.plugin.sha256 }}  /tmp/hass_oidc_auth.zip" | sha256sum -c
+                mkdir -p /config/custom_components
+                unzip /tmp/hass_oidc_auth.zip -d /tmp/hass_oidc_auth/
+                rm -rf /config/custom_components/hass_oidc_auth
+                cp -r /tmp/hass_oidc_auth/$(ls /tmp/hass_oidc_auth/ | head -1)/ /config/custom_components/hass_oidc_auth/
+                echo "{{ .Values.homeAssistant.oidc.plugin.sha256 }}" > /config/custom_components/hass_oidc_auth/.sha256
+              fi
+              {{- else }}
+              if [ -d /config/custom_components/hass_oidc_auth ]; then
+                echo "Plugin hass_oidc_auth already installed, skipping"
+              else
+                apk add --no-cache wget unzip
+                wget -O /tmp/hass_oidc_auth.zip {{ .Values.homeAssistant.oidc.plugin.url }}
+                mkdir -p /config/custom_components
+                unzip /tmp/hass_oidc_auth.zip -d /tmp/hass_oidc_auth/
+                rm -rf /config/custom_components/hass_oidc_auth
+                cp -r /tmp/hass_oidc_auth/$(ls /tmp/hass_oidc_auth/ | head -1)/ /config/custom_components/hass_oidc_auth/
+              fi
+              {{- end }}
+              {{- end }}
+              {{- range .Values.homeAssistant.plugins }}
+              if [ "$(cat /config/custom_components/{{ .name }}/.sha256 2>/dev/null)" = {{ .sha256 | quote }} ]; then
+                echo "Plugin {{ .name }} already at {{ .sha256 }}, skipping"
+              else
+                apk add --no-cache wget unzip
+                wget -O /tmp/{{ .name }}.zip {{ .url }}
+                echo "{{ .sha256 }}  /tmp/{{ .name }}.zip" | sha256sum -c
+                mkdir -p /config/custom_components
+                unzip /tmp/{{ .name }}.zip -d /tmp/{{ .name }}/
+                rm -rf /config/custom_components/{{ .name }}
+                {{- if .stripComponents }}
+                cp -r /tmp/{{ .name }}/$(ls /tmp/{{ .name }}/ | head -1)/ /config/custom_components/{{ .name }}/
+                {{- else }}
+                cp -r /tmp/{{ .name }}/ /config/custom_components/{{ .name }}/
+                {{- end }}
+                echo "{{ .sha256 }}" > /config/custom_components/{{ .name }}/.sha256
+              fi
+              {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /config
+        {{- if .Values.homeAssistant.oidc.enabled }}
         - name: oidc-config
           image: busybox:1.36
           command:
@@ -92,7 +148,7 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
-      {{- end }}
+        {{- end }}
       {{- end }}
       containers:
       {{- if .Values.homeAssistant.bluez.enabled }}
@@ -105,7 +161,6 @@ spec:
       - name: matter-server
         image: {{ .Values.homeAssistant.matter.image.repository }}:{{ .Values.homeAssistant.matter.image.tag }}
         securityContext:
-          allowPrivilegeEscalation: true
           capabilities:
             add:
               - SYS_ADMIN
@@ -114,91 +169,73 @@ spec:
           - --storage-path=/data
           - --paa-root-cert-dir=/data/credentials
           - --bluetooth-adapter=0
+          {{- if eq .Values.homeAssistant.matter.networkMode "multus" }}
           - --primary-interface=net1
+          {{- else }}
+          - --primary-interface={{ .Values.homeAssistant.matter.multus.masterInterface }}
+          {{- end }}
         ports:
-        - containerPort: {{ .Values.homeAssistant.matter.port }}
+          - containerPort: {{ .Values.homeAssistant.matter.port }}
+        volumeMounts:
+          - name: matter-data
+            mountPath: /data
       {{- end }}
       - name: home-assistant
         image: {{ .Values.homeAssistant.image.repository }}:{{ .Values.homeAssistant.image.tag }}
         resources:
           {{- toYaml .Values.homeAssistant.resources | nindent 10 }}
         ports:
-        - containerPort: 8123
-        {{- if .Values.homeAssistant.oidc.enabled }}
-        env:
-          - name: OIDC_CLIENT_ID
-            {{- if .Values.homeAssistant.oidc.clientId.secretKeyRef.name }}
-            valueFrom:
-              secretKeyRef:
-                name: {{ .Values.homeAssistant.oidc.clientId.secretKeyRef.name | quote }}
-                key: {{ .Values.homeAssistant.oidc.clientId.secretKeyRef.key | quote }}
-            {{- else if .Values.homeAssistant.oidc.clientId.configMapKeyRef.name }}
-            valueFrom:
-              configMapKeyRef:
-                name: {{ .Values.homeAssistant.oidc.clientId.configMapKeyRef.name | quote }}
-                key: {{ .Values.homeAssistant.oidc.clientId.configMapKeyRef.key | quote }}
-            {{- else }}
-            value: {{ .Values.homeAssistant.oidc.clientId.value | quote }}
-            {{- end }}
-          - name: OIDC_CLIENT_SECRET
-            {{- if .Values.homeAssistant.oidc.clientSecret.secretKeyRef.name }}
-            valueFrom:
-              secretKeyRef:
-                name: {{ .Values.homeAssistant.oidc.clientSecret.secretKeyRef.name | quote }}
-                key: {{ .Values.homeAssistant.oidc.clientSecret.secretKeyRef.key | quote }}
-            {{- else }}
-            value: {{ .Values.homeAssistant.oidc.clientSecret.value | quote }}
-            {{- end }}
-        {{- end }}
+          - containerPort: 8123
         volumeMounts:
-        - mountPath: /config
-          name: config
-        - mountPath: /config/configuration.yaml
-          subPath: configuration.yaml
-          name: configmap-file
-        - mountPath: /config/automations.yaml
-          subPath: automations.yaml
-          name: configmap-file
-        - mountPath: /media
-          name: media-volume
-        {{- if .Values.homeAssistant.devices.dbus.enabled }}
-        - mountPath: /run/dbus
-          name: d-bus
-        {{- end }}
-        {{- if .Values.homeAssistant.devices.zigbee.enabled }}
-        - mountPath: {{ .Values.homeAssistant.devices.zigbee.path }}
-          name: zigbee
-        {{- end }}
-        - name: data-volume
-          mountPath: /data
+          - mountPath: /config
+            name: config
+          - mountPath: /config/configuration.yaml
+            subPath: configuration.yaml
+            name: configmap-file
+          - mountPath: /config/automations.yaml
+            subPath: automations.yaml
+            name: configmap-file
+          - mountPath: /media
+            name: media-volume
+          {{- if .Values.homeAssistant.devices.dbus.enabled }}
+          - mountPath: /run/dbus
+            name: d-bus
+          {{- end }}
+          {{- if .Values.homeAssistant.devices.zigbee.enabled }}
+          - mountPath: {{ .Values.homeAssistant.devices.zigbee.path }}
+            name: zigbee
+          {{- end }}
         securityContext:
           privileged: {{ .Values.homeAssistant.privileged }}
+          {{- if and .Values.homeAssistant.matter.enabled (eq .Values.homeAssistant.matter.networkMode "hostNetwork") }}
           capabilities:
             add:
               - NET_ADMIN
               - NET_RAW
-              - SYS_ADMIN
-      hostNetwork: {{ .Values.homeAssistant.hostNetwork }}
+          {{- end }}
+      hostNetwork: {{ or .Values.homeAssistant.hostNetwork (and .Values.homeAssistant.matter.enabled (eq .Values.homeAssistant.matter.networkMode "hostNetwork")) }}
       volumes:
-      - name: config
-        persistentVolumeClaim:
-          claimName: home-assistant-pvc
-      - name: media-volume
-        hostPath:
-          path: /tmp/media
-      - name: configmap-file
-        configMap:
-          name: home-assistant-configmap
-      {{- if .Values.homeAssistant.devices.dbus.enabled }}
-      - name: d-bus
-        hostPath:
-          path: {{ .Values.homeAssistant.devices.dbus.path }}
-      {{- end }}
-      - name: data-volume
-        hostPath:
-          path: /tmp/media
-      {{- if .Values.homeAssistant.devices.zigbee.enabled }}
-      - name: zigbee
-        hostPath:
-          path: {{ .Values.homeAssistant.devices.zigbee.path }}
-      {{- end }}
+        - name: config
+          persistentVolumeClaim:
+            claimName: home-assistant-pvc
+        - name: media-volume
+          hostPath:
+            path: /tmp/media
+        - name: configmap-file
+          configMap:
+            name: home-assistant-configmap
+        {{- if .Values.homeAssistant.devices.dbus.enabled }}
+        - name: d-bus
+          hostPath:
+            path: {{ .Values.homeAssistant.devices.dbus.path }}
+        {{- end }}
+        {{- if .Values.homeAssistant.devices.zigbee.enabled }}
+        - name: zigbee
+          hostPath:
+            path: {{ .Values.homeAssistant.devices.zigbee.path }}
+        {{- end }}
+        {{- if .Values.homeAssistant.matter.enabled }}
+        - name: matter-data
+          persistentVolumeClaim:
+            claimName: matter-data-pvc
+        {{- end }}

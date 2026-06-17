@@ -36,3 +36,23 @@ spec:
     requests:
       storage: {{ .Values.zwavejs.pvc.size }}
 {{- end }}
+{{- if .Values.homeAssistant.matter.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: matter-data-pvc
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: home-assistant
+    {{- include "chart.labels" . | nindent 4 }}
+spec:
+  accessModes:
+  - ReadWriteOnce
+  {{- if .Values.homeAssistant.matter.pvc.storageClass }}
+  storageClassName: {{ .Values.homeAssistant.matter.pvc.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.homeAssistant.matter.pvc.size }}
+{{- end }}

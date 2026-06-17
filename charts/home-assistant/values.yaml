@@ -23,13 +23,12 @@ homeAssistant:
     size: 9Gi
     storageClass: ""   # Leave empty to use cluster default
 
-  # Host networking is required for mDNS discovery and certain integrations.
-  # Set to false if running in cloud environments without hardware.
-  hostNetwork: true
+  # Host networking — only needed for mDNS/multicast in bare-metal environments.
+  # Matter hostNetwork mode sets this automatically; leave false otherwise.
+  hostNetwork: false
 
-  # Privileged mode is needed for USB device access and Bluetooth.
-  # Set to false if no host devices are required.
-  privileged: true
+  # Privileged mode — only needed for direct hardware access (e.g. USB devices).
+  privileged: false
 
   # ── Host devices ──
   devices:
@@ -44,43 +43,29 @@ homeAssistant:
       enabled: true
       path: /run/dbus
 
-  # ── Init Containers ──
-  # Run before the main Home Assistant container starts.
-  # Useful for installing custom components, seeding configuration, etc.
-  # All volumes defined for the pod (e.g. "config") are available to mount here.
-  # Full spec: https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
-  initContainers: []
-  # Example — install a custom component from a git repo:
-  # - name: install-oidc-auth
-  #   image: alpine:3.19
-  #   command:
-  #     - sh
-  #     - -c
-  #     - |
-  #       apk add --no-cache wget unzip
-  #       wget -O /tmp/hass-oidc-auth.zip https://github.com/christiaangoossens/hass-oidc-auth/archive/refs/heads/main.zip
-  #       unzip /tmp/hass-oidc-auth.zip -d /tmp/
-  #       mkdir -p /config/custom_components
-  #       cp -r /tmp/hass-oidc-auth-main/custom_components/hass_oidc_auth /config/custom_components/
-  #   volumeMounts:
-  #     - name: config
-  #       mountPath: /config
+  # ── Plugins ──
+  # Custom components downloaded and installed into /config/custom_components/ at startup.
+  # Idempotent: a sha256 marker file prevents re-downloading on pod restart.
+  plugins: []
+  # - name: my-component
+  #   url: https://github.com/user/repo/archive/refs/tags/v1.0.0.zip
+  #   sha256: "abc123..."
+  #   stripComponents: true   # strip top-level GitHub-generated directory from zip
 
   # ── OIDC Auth Integration ──
   # Adds OpenID Connect / OAuth2 login support via hass-oidc-auth.
   # Repo: https://github.com/christiaangoossens/hass-oidc-auth
-  #
-  # When enabled, an init container writes /config/oidc_auth.yaml (a mapping) with
-  # all resolved credentials and settings. Add to homeAssistant.configuration:
-  #
-  #   auth_oidc: !include oidc_auth.yaml
-  #
-  # The custom component must be installed separately (e.g. via an init container).
+  # When enabled, the plugin is automatically installed and oidc_auth.yaml is written.
   oidc:
     enabled: false
     # OIDC provider discovery URL
     # e.g. https://auth.example.com/realms/myrealm/.well-known/openid-configuration
     discoveryUrl: ""
+
+    # Plugin source — pin a specific tag URL and its sha256 for integrity verification
+    plugin:
+      url: https://github.com/christiaangoossens/hass-oidc-auth/archive/refs/heads/main.zip
+      sha256: ""
 
     clientId:
       # Provide exactly one of: value, secretKeyRef, or configMapKeyRef.
@@ -120,7 +105,7 @@ homeAssistant:
   # Provides BLE (Bluetooth Low Energy) support for sensors like
   # plant soil monitors, temperature beacons, etc.
   bluez:
-    enabled: true
+    enabled: false
     image:
       repository: ghcr.io/mysticrenji/bluez-service
       tag: "v1.1.0"
@@ -129,25 +114,68 @@ homeAssistant:
   # Enables Matter/Thread smart home protocol support.
   # Docs: https://github.com/home-assistant-libs/python-matter-server
   matter:
-    enabled: true
+    enabled: false
     image:
       repository: ghcr.io/home-assistant-libs/python-matter-server
       tag: stable
     port: 5580
 
+    # Network mode for Matter — required when matter.enabled is true.
+    # "hostNetwork": uses the host network stack directly (simple, bare-metal)
+    # "multus":      attaches a secondary interface via Multus CNI (cloud/isolated pods)
+    networkMode: ""
+
+    # Multus-specific settings (required when networkMode is "multus")
+    multus:
+      networkName: ""       # NetworkAttachmentDefinition name to annotate pods with
+      masterInterface: ""   # Host interface to attach to (e.g. eth0)
+      cniType: macvlan      # CNI plugin type (e.g. macvlan, ipvlan)
+
+    # Persistent storage for matter-server /data
+    pvc:
+      size: 1Gi
+      storageClass: ""
+
   # ── configuration.yaml ──
-  # This is injected as /config/configuration.yaml inside the HA container.
-  # Customize with any valid Home Assistant configuration.
+  # Structured parameters injected as /config/configuration.yaml.
   # Docs: https://www.home-assistant.io/docs/configuration/
-  configuration: |
-    default_config:
+  config:
+    defaultConfig: true
+    homeassistant:
+      name: ""
+      latitude: 0
+      longitude: 0
+      elevation: 0
+      unitSystem: metric
+      timeZone: UTC
+      country: ""
+    http:
+      useXForwardedFor: false
+      trustedProxies: []
+      corsAllowedOrigins: []
     frontend:
-      themes: !include_dir_merge_named themes
+      themes: true
     tts:
-      - platform: google_translate
-    automation: !include automations.yaml
-    script: !include scripts.yaml
-    scene: !include scenes.yaml
+      platform: google_translate
+    logger:
+      default: warning
+      components: {}
+    automation: true
+    script: true
+    scene: true
+    extra: ""
+
+# ──────────────────────────────────────────────
+# Gateway API — external access to Home Assistant
+# Requires a Gateway API controller (e.g. Envoy Gateway, Cilium)
+# TLS is terminated at the Gateway level, not at the HTTPRoute.
+# ──────────────────────────────────────────────
+gateway:
+  enabled: false
+  gatewayNamespace: ""
+  gatewayName: ""
+  hostname: ""
+  trustedProxies: []
 
 # ──────────────────────────────────────────────
 # Z-Wave JS — Z-Wave device management
@@ -208,27 +236,3 @@ mosquitto:
   ports:
     mqtt: 1883           # Standard MQTT port
     websocket: 9001      # MQTT over WebSocket
-
-# ──────────────────────────────────────────────
-# Ingress — external access to Home Assistant
-# Requires an Ingress controller (e.g. ingress-nginx) in the cluster
-# ──────────────────────────────────────────────
-ingress:
-  enabled: true
-  className: nginx
-  host: home-automation.io   # Replace with your domain
-  tls:
-    enabled: true
-    secretName: letsencrypt  # TLS cert Secret (auto-created by cert-manager, or provide your own)
-
-# ──────────────────────────────────────────────
-# Certificate Issuer — automatic TLS via Let's Encrypt
-# Requires cert-manager to be installed in the cluster:
-#   helm install cert-manager jetstack/cert-manager --set installCRDs=true
-# ──────────────────────────────────────────────
-certIssuer:
-  enabled: true
-  email: ""              # Required — your email for Let's Encrypt notifications
-  server: https://acme-v02.api.letsencrypt.org/directory
-  # For testing, use the staging server to avoid rate limits:
-  # server: https://acme-staging-v02.api.letsencrypt.org/directory
