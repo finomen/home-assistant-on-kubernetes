@@ -145,12 +145,6 @@ homeAssistant:
   # Structured parameters injected as /config/configuration.yaml.
   # Docs: https://www.home-assistant.io/docs/configuration/
   config:
-    defaultConfig: true
-    # Enable bluetooth integration. Disable in environments without BT hardware
-    # (e.g. Kubernetes) to avoid 10+ second startup delays and timeout warnings.
-    # When false, an explicit `bluetooth:` entry is emitted in configuration.yaml
-    # which tells HA to skip auto-discovery of bluetooth adapters.
-    bluetooth: false
     homeassistant:
       name: ""
       latitude: 0
@@ -159,20 +153,76 @@ homeAssistant:
       unitSystem: metric
       timeZone: UTC
       country: ""
+
     http:
       useXForwardedFor: false
       trustedProxies: []
       corsAllowedOrigins: []
+
     frontend:
       themes: true
+
     tts:
       platform: google_translate
+
     logger:
       default: warning
       components: {}
+
     automation: true
     script: true
     scene: true
+
+    # ── Integrations ──
+    # Replaces default_config — each integration is toggled individually.
+    # Docs: https://www.home-assistant.io/integrations/
+    integrations:
+      # ── Enabled by default ──
+      assistPipeline: true   # Voice assistant (Assist)
+      backup: true           # Automated backups
+      energy: true           # Energy dashboard
+      history: true          # State history graphs
+      logbook: true          # Activity log / event stream
+      alerts: true           # Home Assistant alerts
+      mobileApp: true        # Mobile companion app
+      ssdp: true             # SSDP/UPnP device discovery
+      my: true               # my.home-assistant.io redirect service
+      sun: true              # Sun position & elevation sensor
+      webhook: true          # Incoming webhook automation triggers
+
+      conversation: true     # Conversation agent / NLP
+      counter: true          # Counter helpers
+      hardware: true         # Hardware info panel
+      image: true            # Image entity support
+      inputBoolean: true     # Input Boolean helpers
+      inputButton: true      # Input Button helpers
+      inputDatetime: true    # Input Datetime helpers
+      inputNumber: true      # Input Number helpers
+      inputSelect: true      # Input Select helpers
+      inputText: true        # Input Text helpers
+      map: true              # Map panel
+      person: true           # Person / presence tracking
+      systemHealth: true     # System health diagnostics
+      tag: true              # NFC/QR tag support
+      timer: true            # Timer helpers
+      zone: true             # Zone management
+
+      # ── Disabled by default — enable as needed ──
+      bluetooth: false       # Bluetooth/BLE — disable in k8s (no adapter, causes startup delay)
+      cloud: false           # Nabu Casa remote access & voice
+      dhcp: false            # DHCP-based device discovery
+      mediaSource: false     # Local media source browser
+      network: false         # Network configuration panel
+      schedule: false        # Weekly schedule helpers
+      shoppingList: false    # Shopping list
+      usb: false             # USB device discovery
+      zeroconf: false        # mDNS/Zeroconf device discovery
+
+      # ── Optional third-party integrations ──
+      shelly: false          # Shelly smart home devices (uses mDNS — enable zeroconf too)
+      hue: false             # Philips Hue lighting (uses SSDP — enabled by default above)
+
+    # Raw YAML appended verbatim at the end of configuration.yaml.
     extra: ""
 
 # ──────────────────────────────────────────────
